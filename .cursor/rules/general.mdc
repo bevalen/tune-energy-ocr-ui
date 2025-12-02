@@ -1,0 +1,92 @@
+---
+alwaysApply: true
+---
+# General Architectural Principles & Project Standards
+
+**PROVIDE CHAT SUMMARIES AFTER CODE CHANGES IN THE CHAT WINDOW ONLY. DO NOT CREATE NEW MARKDOWN FILES UNLESS DIRECTLY ASKED TO.**
+
+This project is an AI Dispatcher MVP for Real Time Transport (RTT), automating dispatch workflows using HappyRobot and Next.js.
+
+## 1. Project Context & Principles
+
+- **Goal**: Automate repetitive dispatch workflows (inbound/outbound) using AI.
+- **Core Stack**: Next.js (App Router), Supabase (DB/Auth), HappyRobot (AI Runtime), Tailwind CSS.
+- **Source of Truth**: 
+  - Database types: `src/types/database.types.ts`
+  - Operational Guardrails/Simple Ops: `src/lib/data.ts`
+  - Policies are stored in Supabase (`dispatch_policies`) and managed via the Admin UI.
+
+## 2. Next.js Architecture & Page Patterns - USE NEXT.JS DEVTOOLS MCP FOR ANY NEXT.JS TROUBLESHOOTING/ERRORS
+
+We use Next.js App Router with specific patterns for layout and organization.
+
+### Route Organization
+- **Route Groupings**: Use `(group-directory)` for shared layouts without affecting the URL structure.
+- **Auth Routes**: Public auth routes must use `(auth)` group (e.g., `(auth)/login` resolves to `/login`).
+- **Protected Routes**: Use `(protected)/layout.tsx` for authentication validation.
+- **Feature Layouts**: Each feature directory (e.g., `dashboard`, `admin`) should have its own layout (`{feature}/layout.tsx`).
+
+### Page Structure
+- **Thin Pages**: `page.tsx` files should be thin, primarily acting as Route Handlers.
+- **Data Fetching**: Move data fetching logic into wrapper components or Server Actions, not directly in the page UI rendering logic if possible (or keep page server-side and pass data down).
+- **Metadata**: Define metadata in each page subdirectory.
+- **Caching**: Explicitly define caching strategies (`revalidate` or `noStore()`) where appropriate.
+
+### Layout Responsibilities
+- **Root Layout (`app/layout.tsx`)**: Keep minimal. **Do not** include an AuthProvider here.
+- **Protected Layout (`(protected)/layout.tsx`)**: Handle authentication validation once for all protected routes.
+
+## 3. Server Actions & Supabase Integration
+
+Connect the application to Supabase endpoints using Server Actions.
+
+### Organization & Directory Structure
+- **Root Directory**: All server actions must be located in `src/actions/`.
+- **Feature Subdirectories**: Organize actions into subdirectories based on feature or domain (e.g., `src/actions/auth/`, `src/actions/dispatch/`).
+- **File Granularity**: 
+  - Use specific files for distinct workflows (e.g., `forgot-password.ts` containing all CRUD for that flow).
+  - Do not dump all actions into a single large file.
+- **Barrel Exports**:
+  - **Feature Level**: Each subdirectory must have an `index.ts` exporting its contents (e.g., `export * from './forgot-password'`).
+  - **Root Level**: The main `src/actions/index.ts` must export all feature barrels.
+
+### Implementation Rules
+- **Directives**: Always use `"use server"` at the top of action files.
+- **Validation**: Validate all inputs using Zod schemas.
+- **Authentication**: 
+  - Check authentication via JWT claims using `getClaims()` (or equivalent helper).
+  - **Do not** use `SUPABASE_SECRET_KEY` in client-facing actions; use session cookie-based clients.
+- **Authorization**: Verify resource ownership and permissions explicitly in the action.
+- **Error Handling**: 
+  - **Never throw errors** to the client. Catch exceptions and return a typed object: `{ success?: boolean, error?: string, data?: T }`.
+
+
+### Mutations
+- **Revalidation**: Use `revalidatePath()` after successful mutations to update the UI.
+
+## 4. Authentication & Authorization
+
+- **Claims Management**: 
+  - **No duplicate `getClaims()` calls** in pages or components. 
+  - Read roles/auth data directly from JWT claims.
+  - **Avoid** RPC calls like `getUserRoles()` or `hasAnyRole()` if claims are sufficient.
+- **Client Side**: Use `useAuthClaims()` hook for accessing auth data in client components.
+- **Server Side**: Validate auth in Server Actions using `getClaims()`.
+- **Resource Access**: Always perform authorization checks to verify ownership before modifying data.
+
+## 5. Component Organization
+
+Organize components by feature, not by technical type.
+
+- **Feature Components**: Place feature-specific components in `src/components/{feature}/` (e.g., `src/components/admin/`).
+- **Shared Components**: Place components used by 2+ features in `src/components/shared/`.
+- **Wrappers**: Use one wrapper component per feature (e.g., `{feature}-wrapper.tsx`) to encapsulate logic and state.
+- **UI Library**: Core UI components (buttons, inputs) remain in `src/components/ui/`.
+
+## 6. Coding Standards
+
+- **Types**: Strictly use types from `src/types/database.types.ts` for database entities.
+- **Guardrails**: Respect operational limits defined in `src/lib/data.ts`.
+- **Imports**: Use absolute imports (e.g., `@/components/...`, `@/lib/...`).
+- **Formatting**: Adhere to the project's Prettier and ESLint configurations.
+
