@@ -39,8 +39,8 @@ export function BillUploadForm() {
   const uploadProps = useSupabaseUpload({
     bucketName: 'bills',
     allowedMimeTypes: ['application/pdf', 'image/*'],
-    maxFiles: 10,
-    maxFileSize: 10 * 1024 * 1024, // 10MB
+    maxFiles: 15,
+    maxFileSize: 50 * 1000 * 1000, // 50MB
     upsert: false, // Don't overwrite - auto-rename on collision
   })
 
