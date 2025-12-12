@@ -131,7 +131,6 @@ async function retrieveLLMWhispererResult(jobId: string): Promise<string> {
       headers: { "unstract-key": WHISPER_API_KEY || "" },
     });
 
-    console.log(`For job ${jobId}, response is ${response.status}`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     }
@@ -244,8 +243,6 @@ async function sendTextToOpenAI(text: string, filename: string, retry: boolean=f
       })
     });
 
-    console.log(`LLM response was ${response.status}`);
-    
     if (!response.ok) {
       throw new Error(`OpenAI API error: ${await response.text()}`);
     }
@@ -253,7 +250,6 @@ async function sendTextToOpenAI(text: string, filename: string, retry: boolean=f
     const result = await response.json();
     const content = result.choices?.[0]?.message?.content;
 
-    console.log(`LLM thinks: ${content}`);
     return content;
 
   } catch (error) {
@@ -299,7 +295,7 @@ async function processBatch(
     // Step 2: Validate file extensions
     const invalidFiles = filesToProcess.filter(file => !VALID_EXTENSIONS.some(ext => file.name.endsWith(ext)));
     if (invalidFiles.length > 0) {
-      console.warn(`⚠️ Invalid file extensions: ${invalidFiles.map(f => f.name).join(", ")}`);
+      console.warn(`Invalid file extensions: ${invalidFiles.map(f => f.name).join(", ")}`);
     }
 
     const validFiles = filesToProcess.filter(file => VALID_EXTENSIONS.some(ext => file.name.endsWith(ext)));
@@ -319,11 +315,10 @@ async function processBatch(
     // Step 3: Submit all valid files to LLMWhisperer
     const whisperJobs: WhisperJob[] = [];
     const processingLog: { filename: string; status: string; error: string }[] = [];
-    console.log(`⏳ Building LLMWhisperer jobs...`);
+    console.log(`Building LLMWhisperer jobs...`);
 
     for (const obj of validFiles) {
       try {
-        console.log(`Downloading ${obj.name} from Supabase...`);
         const { data: fileData, error } = await supabase.storage.from("bills").download(obj.name);
         if (error) throw error;
 
@@ -345,7 +340,7 @@ async function processBatch(
     }
 
     // Step 4: Wait for LLMWhisperer to process (configurable timeout)
-    console.log(`⏳ Waiting ${WHISPER_WAIT_TIME} seconds for LLMWhisperer to process ${whisperJobs.length} files...`);
+    console.log(`Waiting ${WHISPER_WAIT_TIME} seconds for LLMWhisperer to process ${whisperJobs.length} files...`);
     await new Promise(resolve => setTimeout(resolve, WHISPER_WAIT_TIME * 1000));
 
     // Step 5: Retrieve results from LLMWhisperer (text_only=true)
@@ -357,7 +352,6 @@ async function processBatch(
         let OCRText = await retrieveLLMWhispererResult(job.whisper_hash);
 
         textResults.push({ filename: job.filename, text: OCRText || null, error: "" });
-        console.log(`Retrieved text for ${job.filename}.`);
         
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
@@ -367,9 +361,9 @@ async function processBatch(
 
     // Step 6: Send each extracted text to OpenAI for structured extraction
     const processedResults: ProcessedFileResult[] = [];
+    console.log(`Starting to send results to LLM`);
     
     for (const { filename, text, error } of textResults) {
-      console.log(`Starting to send results to LLM for ${filename}`);
      
       if (error || !text) {
         processedResults.push({
@@ -382,12 +376,8 @@ async function processBatch(
         continue;
       }
       
-      //console.log(`Trying OpenAI with ${text}`);
-
       try {
         const content = await sendTextToOpenAI(text,filename);
-    
-        //console.log(`Parsed from OpenAI: ${content}`);
         
         let parsedContent;
         try {
@@ -410,7 +400,6 @@ async function processBatch(
             warning: null,
           });
         }
-        console.log(`pushed to results queue: ${filename}`);
 
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
@@ -429,7 +418,7 @@ async function processBatch(
       }
     }
 
-    console.log(`📊 Step 6.5: Checking for anomalies across meters...`);
+    console.log(`Step 6.5: Checking for anomalies across meters...`);
 
     const sortedResults = [...processedResults]
       .filter(r => r.end_date && typeof r.end_date === 'string' && !r.error)
@@ -438,8 +427,6 @@ async function processBatch(
         if (meterCompare !== 0) return meterCompare;
         return a.end_date.localeCompare(b.end_date);
       });
-
-    console.log(`Sorted results length: ${sortedResults.length}`)
 
     // Track previous valid record
     let prevRecord: typeof sortedResults[0] | null = null;
@@ -465,14 +452,13 @@ async function processBatch(
 
       // Compute relative change (absolute % difference)
       const rateDiffPct = Math.abs(((currCharges / currKwh) - (prevCharges / prevKwh)) / (currCharges / currKwh));
-      console.log(`Current month diff is ${rateDiffPct}`);
-
+      
       // Flag if either exceeds 15%
       const isAnomaly = rateDiffPct > 0.15;
       const bestGuess = (prevCharges / prevKwh) / currCharges;
 
       if (isAnomaly) {
-        console.log(`⚠️ Anomaly detected: ${current.filename} [${current.index}] (${currCharges}/${prevCharges} charges, ${currKwh}/${prevKwh} kWh)`);
+        console.log(`Anomaly detected: ${current.filename} [${current.index}] (${currCharges}/${prevCharges} charges, ${currKwh}/${prevKwh} kWh)`);
         reprocessQueue.push({ filename: current.filename, originalResult: current, guess: bestGuess, diff: rateDiffPct, index: current.index });
         prevRecord = null; //this will skip the next month's record--we don't want to re-run it with the current anomalous month as the baseline
       }
@@ -482,50 +468,10 @@ async function processBatch(
 
     // Handle flagged results
     if (reprocessQueue.length > 0) {
-      console.log(`🔁 Reprocessing ${reprocessQueue.length} anomalous results...`);
+      console.log(`Flagging ${reprocessQueue.length} anomalous results...`);
 
       for (const { filename, originalResult, guess, diff, index } of reprocessQueue) {
         try {
-          /*
-          // Re-submit to OpenAI with a better guess for the usage
-          const newResult = await sendTextToOpenAI(textResults[index].text,filename,true,guess); 
-
-          // Parse result (same logic as in Step 6)
-          const parsedRepro = JSON.parse(newResult);
-
-          if (!Array.isArray(parsedRepro.results) || parsedRepro.results.length === 0) {
-            throw new Error("Reprocessed response invalid");
-          }
-
-          const reprocessedResult = parsedRepro.results[0];
-
-          // Simple consensus: Replace if reprocessed is non-null and within 50% of original (prevents wild swings)
-          const prevCharge = originalResult.total_charges;
-          const newCharge = reprocessedResult.total_charges ?? null;
-
-          if (newCharge !== null) {
-            const chargeDiff = Math.abs((newCharge - prevCharge) / prevCharge);
-            if (chargeDiff <= 0.5) {
-              // Accept reprocessed result
-              console.log(`✅ Accepted reprocessed result for ${filename}`);
-              // Update original processedResults
-              if (index !== -1) {
-                processedResults[index] = {
-                  ...originalResult,
-                  total_charges: newCharge,
-                  total_kwh: reprocessedResult.total_kwh ?? originalResult.total_kwh,
-                  meter_numbers: Array.isArray(reprocessedResult.meter_numbers)
-                    ? reprocessedResult.meter_numbers
-                    : originalResult.meter_numbers,
-                  error: null, // Clear previous errors if any
-                  warning: `Reprocessed after anomaly`,
-                };
-              }
-            } else {
-              console.log(`❌ Rejected reprocessed result for ${filename}: too divergent (${newCharge} vs ${prevCharge})`);
-            }
-          }
-          */
          console.log(`index is ${index}`);
           if (index !== -1) {
             console.log(`Adding anomaly to index ${index}`);
@@ -581,10 +527,7 @@ async function processBatch(
     );
     const htmlTable = csvToHtmlTable(logCsv);
 
-    console.log(`combining results with logs`);
-  
     // Step 8: Send email
-    console.log(`sending email`);
     const filename = `${customer}_bill_analysis_${new Date().toISOString().slice(0, 10)}.csv`;
     const emailBody = `
     Hi there,<br><br>
@@ -626,11 +569,11 @@ async function processBatch(
 
       const data = await res.json();
 
-      console.log(`✅ Email sent to ${email} with file: ${filename}`);
+      console.log(`Email sent to ${email} with file: ${filename}`);
 
     } catch (emailError) {
-      console.error(`❌ Failed to send email via SMTP:`, emailError);
-      // Don't fail the whole process if email fails
+      console.error(`Failed to send email via SMTP:`, emailError);
+      // Don’t fail the whole process if email fails
     }
 
     // Step 9: Mark all processed files in queue
@@ -649,7 +592,7 @@ async function processBatch(
       }
     }
 
-    console.log(`🎉 Batch complete! Processed ${processedResults.filter(r => !r.error).length} files successfully.`);
+    console.log(`Batch complete! Processed ${processedResults.filter(r => !r.error).length} files successfully.`);
 
     // Step 10: Cleanup files in storage
     const { data: existingFiles, error: fetchError } = await supabase.storage
@@ -668,7 +611,7 @@ async function processBatch(
         if (result.status === "rejected") {
           console.error(`Failed to delete ${existingFiles[index].name}:`, result.reason.message);
         } else {
-          console.log(`🗑️ Deleted: ${existingFiles[index].name}`);
+          console.log(`Deleted: ${existingFiles[index].name}`);
         }
       });
     }
@@ -718,7 +661,7 @@ Deno.serve(async (req) => {
     }
 
     // Start processing in background
-    processBatch(
+    const batch = processBatch(
       customer,
       location_id,
       location_address,
@@ -727,9 +670,11 @@ Deno.serve(async (req) => {
       SERVICE_ROLE_KEY
     ).catch(err => console.error("Background task crashed:", err));
     
+    EdgeRuntime.waitUntil(batch); // Wait until the batch is done so we don't terminate early after client response 
+
     return new Response(JSON.stringify({
       success: true
-    }), { status: 201 });
+    }), { status: 202 });
 
   } catch (error) {
     console.error("💥 readBills failed:", error);
@@ -739,4 +684,3 @@ Deno.serve(async (req) => {
     }), { status: 500 });
   }
 });
-
