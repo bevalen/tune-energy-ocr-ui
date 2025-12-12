@@ -1,0 +1,6 @@
+# Supabase Configuration File
+# https://supabase.com/docs/guides/cli/config
+
+[functions.readBills]
+verify_jwt = true
+
