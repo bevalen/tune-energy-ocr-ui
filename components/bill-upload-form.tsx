@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { Loader2, Trash2, Sparkles } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ToastWithProgress } from '@/components/toast-with-progress'
+import { submitAnalysis, AnalysisRequest } from '@/src/actions/analyze/submit-analysis'
 
 const cardVariants = {
   hidden: { opacity: 0, y: 30, scale: 0.95 },
@@ -34,6 +35,9 @@ const buttonVariants = {
 
 export function BillUploadForm() {
   const [email, setEmail] = useState('')
+  const [customer, setCustomer] = useState('')
+  const [locationId, setLocationId] = useState('')
+  const [address, setAddress] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const uploadProps = useSupabaseUpload({
@@ -48,6 +52,9 @@ export function BillUploadForm() {
 
   const handleClear = useCallback(() => {
     setEmail('')
+    setCustomer('')
+    setLocationId('')
+    setAddress('')
     setFiles([])
     setErrors([])
     clearSuccesses()
@@ -74,6 +81,30 @@ export function BillUploadForm() {
         description: (
           <ToastWithProgress duration={5000}>
             The email format is invalid.
+          </ToastWithProgress>
+        ),
+        duration: 5000,
+      })
+      return
+    }
+    
+    if (!customer.trim()) {
+      toast.error('Please enter a customer name', {
+        description: (
+          <ToastWithProgress duration={5000}>
+            Customer Name is required.
+          </ToastWithProgress>
+        ),
+        duration: 5000,
+      })
+      return
+    }
+    
+    if (!locationId.trim()) {
+      toast.error('Please enter a location ID', {
+        description: (
+          <ToastWithProgress duration={5000}>
+            Store # or Location ID is required.
           </ToastWithProgress>
         ),
         duration: 5000,
@@ -136,7 +167,14 @@ export function BillUploadForm() {
           duration: 8000,
         })
       } else {
-        toast.success('Files uploaded successfully!', {
+        const analysisData: AnalysisRequest = {
+          email: email,
+          customer: customer,
+          locationId: locationId,
+          address: address || undefined
+        } 
+        await submitAnalysis(analysisData);
+        toast.success('Files uploaded successfully! Your email will be sent shortly.', {
           description: (
             <ToastWithProgress duration={5000}>
               {uploadResult.successes.length} file(s) uploaded.
@@ -194,6 +232,7 @@ export function BillUploadForm() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
+            {/* Email Address */}
             <motion.div
               className="space-y-2"
               initial={{ opacity: 0, x: -10 }}
@@ -209,6 +248,69 @@ export function BillUploadForm() {
                 placeholder="you@tuneenergy.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
+                className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </motion.div>
+
+            {/* Customer */}
+            <motion.div
+              className="space-y-2"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <Label htmlFor="customer" className="text-sm font-medium">
+                Customer <span className="text-amber-500">*</span>
+              </Label>
+              <Input
+                id="customer"
+                type="text"
+                placeholder="Enter customer name"
+                value={customer}
+                onChange={(e) => setCustomer(e.target.value)}
+                disabled={isLoading}
+                className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </motion.div>
+
+            {/* Location ID */}
+            <motion.div
+              className="space-y-2"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <Label htmlFor="locationId" className="text-sm font-medium">
+                Location <span className="text-amber-500">*</span>
+              </Label>
+              <Input
+                id="locationId"
+                type="text"
+                placeholder="Store # or Location ID"
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+                disabled={isLoading}
+                className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </motion.div>
+
+            {/* Address */}
+            <motion.div
+              className="space-y-2"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5 }}
+            >
+              <Label htmlFor="address" className="text-sm font-medium">
+                Address
+              </Label>
+              <Input
+                id="address"
+                type="text"
+                placeholder="Physical address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
                 disabled={isLoading}
                 className="transition-all duration-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
               />
