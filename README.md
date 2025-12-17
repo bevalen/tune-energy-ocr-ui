@@ -2,6 +2,22 @@
 
 AI Dispatcher MVP for Real Time Transport (RTT), automating dispatch workflows using HappyRobot and Next.js.
 
+## User Operation
+1. Access the UI at https://tune-energy.vercel.app/
+2. Log in using your provided credentials. If you do not have credentials, please request them from an administrator.
+3. Populate the basic details about the batch you wish to process:
+  a. Email Address (required): This is the email address where you want results to be sent.
+  b. Customer Name (required): The name of the customer.
+  c. Location ID (required): The customer's unique identifier for this location.
+  d. Location Address: The physical address of this location. Not required for processing.
+4. Upload one or more files in the 'Upload Files' area. Accepted file formats: .PDF, .DOCX, .ODT, .PNG, .JPG, .TIFF, .BMP.
+5. Confirm all files are present in the 'Upload Files' area and hit the 'Analyze' button.
+6. If all files were accepted, you'll see a 'Success' message. An email will arrive at the entered address within a few minutes.
+   a. If there were any errors during processing, but partial success was achieved, the email will contain those errors.
+   b. If an email does not arrive within 5 minutes, check the Supabase Edge Function logs for errors.
+
+Note: Please WAIT for each batch to complete before submitting a new batch.
+
 ## Features
 
 - **Authentication & Authorization**
